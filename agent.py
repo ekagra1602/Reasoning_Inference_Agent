@@ -1,5 +1,7 @@
 import requests
 from typing import Dict, Any, List, Optional, Tuple
+import ast
+import operator as op
 
 #API Configuration
 API_KEY = "cse476"
@@ -51,3 +53,39 @@ def call_llm(
             return {"ok": False, "text": None, "raw": None, "status": status, "error": str(err_text), "headers": hdrs}
     except requests.RequestException as e:
         return {"ok": False, "text": None, "raw": None, "status": -1, "error": str(e), "headers": {}}
+
+#Tool: Safe Calculator
+
+ALLOWED_BINOPS = {
+    ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
+    ast.Div: op.truediv, ast.Pow: op.pow, ast.Mod: op.mod
+}
+ALLOWED_UNOPS = {ast.UAdd: op.pos, ast.USub: op.neg}
+
+def safe_eval(expr: str):
+    """
+    Safe arithmetic evaluator
+    Supports: numbers, + - * / ** % parentheses, round(x, ndigits)
+    """
+    expr = expr.replace("^", "**")
+    if len(expr) > 300:
+        raise ValueError("Expression too long.")
+    
+    node = ast.parse(expr, mode="eval")
+    
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+            return n.value
+        if isinstance(n, ast.UnaryOp) and type(n.op) in ALLOWED_UNOPS:
+            return ALLOWED_UNOPS[type(n.op)](ev(n.operand))
+        if isinstance(n, ast.BinOp) and type(n.op) in ALLOWED_BINOPS:
+            return ALLOWED_BINOPS[type(n.op)](ev(n.left), ev(n.right))
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "round":
+            args = [ev(a) for a in n.args]
+            return round(*args)
+        raise ValueError(f"Disallowed: {ast.dump(n)}")
+    
+    return ev(node)
+
