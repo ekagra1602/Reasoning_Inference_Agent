@@ -2,6 +2,7 @@ import requests
 from typing import Dict, Any, List, Optional, Tuple
 import ast
 import operator as op
+import re
 
 #API Configuration
 API_KEY = "cse476"
@@ -122,3 +123,78 @@ def classify_domain(question: str) -> str:
     # Default to common sense
     return "common_sense"
 
+#Technique 2: Chain of thought prompting
+
+COT_SYSTEM = """You are a careful reasoning assistant. 
+Think through problems step by step before giving your final answer.
+After your reasoning, provide your answer on a new line starting with "FINAL ANSWER:"
+"""
+
+COT_PROMPT = """Question: {question}
+
+Let's think step by step, then provide the final answer.
+End your response with:
+FINAL ANSWER: <your answer>"""
+
+
+def chain_of_thought(question: str, domain: str = "default") -> Tuple[str, str]:
+    """
+    Technique 2: Chain of Thought prompting.
+    Returns (answer, reasoning) tuple.
+    """
+    prompt = COT_PROMPT.format(question=question)
+    
+    result = call_llm(prompt=prompt, system=COT_SYSTEM, temperature=0.0)
+    
+    if not result["ok"]:
+        return "", ""
+    
+    response = result["text"] or ""
+    answer = extract_final_answer(response, domain)
+    
+    return answer, response
+
+#Helper function to extract the final answer from a CoT response.
+def extract_final_answer(response: str, domain: str) -> str:
+    #Find explicit FINAL ANSWER marker
+    patterns = [
+        r"FINAL ANSWER:\s*(.+?)(?:\n|$)",
+        r"Final Answer:\s*(.+?)(?:\n|$)",
+        r"The answer is[:\s]+(.+?)(?:\n|$)",
+        r"Answer:\s*(.+?)(?:\n|$)",
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+        if match:
+            answer = match.group(1).strip()
+            return clean_answer(answer, domain)
+    
+    # Fallback: extract based on domain
+    if domain == "math":
+        boxed = re.search(r"\\boxed\{([^}]+)\}", response)
+        if boxed:
+            return boxed.group(1).strip()
+        nums = re.findall(r"[-+]?\d+(?:\.\d+)?", response)
+        if nums:
+            return nums[-1]
+    
+    # Return last non-empty line
+    lines = [l.strip() for l in response.split("\n") if l.strip()]
+    return lines[-1] if lines else ""
+
+
+def clean_answer(answer: str, domain: str) -> str:
+    """Clean up extracted answer."""
+    answer = answer.strip().rstrip(".")
+    
+    # For math, extract just the number
+    if domain == "math":
+        boxed = re.search(r"\\boxed\{([^}]+)\}", answer)
+        if boxed:
+            return boxed.group(1).strip()
+        num = re.search(r"[-+]?\d+(?:\.\d+)?", answer)
+        if num:
+            return num.group(0)
+    
+    return answer
