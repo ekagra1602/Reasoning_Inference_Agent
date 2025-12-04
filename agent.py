@@ -198,3 +198,68 @@ def clean_answer(answer: str, domain: str) -> str:
             return num.group(0)
     
     return answer
+
+#Technique 3: Tool-using agent loop 
+
+TOOL_SYSTEM = """You are a math tool-using agent.
+You may do exactly ONE of the following in your reply:
+1) CALCULATE: <arithmetic expression>
+   - use only numbers, + - * / **, parentheses, and round(x, ndigits)
+   - example: CALCULATE: round((3*2.49)*1.07, 2)
+2) FINAL: <answer>
+Return ONE line with the directive and value. No other text."""
+
+ACTION_RE = re.compile(r"^\s*(CALCULATE|FINAL)\s*:\s*(.+?)\s*$", re.IGNORECASE | re.DOTALL)
+
+
+def parse_action(text: str) -> Tuple[str, str]:
+    """Parse CALCULATE or FINAL action from LLM response."""
+    m = ACTION_RE.match(text.strip())
+    if not m:
+        # Fallback: treat whole thing as final answer
+        return "FINAL", text.strip()
+    return m.group(1).upper(), m.group(2).strip()
+
+
+def tool_agent(question: str, max_tool_uses: int = 3) -> str:
+    """
+    Technique 3: Tool-using agent loop (from Mini Lab 5).
+    Uses calculator tool for arithmetic.
+    """
+    # First prompt
+    first_prompt = f"""Question: {question}
+If you need arithmetic to get the answer, reply as:
+CALCULATE: <expression>
+Otherwise reply:
+FINAL: <answer>"""
+    
+    r1 = call_llm(prompt=first_prompt, system=TOOL_SYSTEM, temperature=0.0)
+    if not r1["ok"]:
+        return ""
+    
+    action, payload = parse_action(r1["text"])
+    tool_uses = 0
+    
+    while action == "CALCULATE" and tool_uses < max_tool_uses:
+        tool_uses += 1
+        
+        try:
+            calc_value = safe_eval(payload)
+        except Exception as e:
+            calc_value = f"Error: {e}"
+        
+        # Second prompt with result
+        second_prompt = f"""The calculation result is: {calc_value}
+Now provide the final answer.
+Reply exactly as: FINAL: <answer>"""
+        
+        rN = call_llm(prompt=second_prompt, system=TOOL_SYSTEM, temperature=0.0)
+        if not rN["ok"]:
+            return str(calc_value)
+        
+        action, payload = parse_action(rN["text"])
+    
+    return payload
+
+
+
