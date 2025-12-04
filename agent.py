@@ -89,3 +89,36 @@ def safe_eval(expr: str):
     
     return ev(node)
 
+#Technique 1: Domain Router 
+
+def classify_domain(question: str) -> str:
+
+    """
+    Classifies questions into different domains using keyword rule
+    Not ising llm calls here.
+    """
+    q = question.lower()
+
+    # Planning domain having action/state language
+    if any(p in q for p in ["actions i can do", "initial state", "goal state", 
+                            "precondition", "perform action"]):
+        return "planning"
+
+    # Future prediction having explicit prediction requests
+    if any(p in q for p in ["predict", "prediction", "will happen", "forecast"]):
+        return "future_prediction"
+
+    # Coding patterns having obvious programming indicators
+    if any(p in q for p in ["def ", "function", ">>>", "implement", "python", 
+                            "code", "algorithm", "return "]):
+        return "coding"
+    
+    # Math patterns having LaTeX and common math words
+    if any(p in q for p in ["$", "\\frac", "\\sqrt", "\\sum", "calculate", 
+                            "compute", "solve", "equation", "integer", 
+                            "probability", "triangle", "how many"]):
+        return "math"
+    
+    # Default to common sense
+    return "common_sense"
+
