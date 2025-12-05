@@ -1,19 +1,21 @@
 # Project Report - Ekagra Gupta
 
+##Github Repo Link - https://github.com/ekagra1602/Reasoning_Inference_Agent
+
 ## Details 
 I built a reasoning agent that solves problems across 5 domains (math, coding, planning, common sense, future prediction) using 4 inference-time techniques. The agent achieved ~45% accuracy on the dev set with LLM-based evaluation, using only 1 API call per question
 ## Techniques Implemented
 
-### 1. Domain Classification
+### 1. Domain Classification (`agent.py:45-71`)
 The agent detects what problem it's dealing with by looking for keywords or different patterns. For example, if it sees latex math symbols or arithmetic operations, it classifies it as math, and if it sees coding syntax, it classifies it as coding.
 
-### 2. Domain-Adaptive Prompting 
+### 2. Domain-Adaptive Prompting  (`agent.py:75-102`)
 One the domain is known from the first function, we can use custom prompts for each type. For example math type is told to reason step by step and only give the final number answer at the end.
 
 ### 3. Chain-of-Thought Prompting (integrated in technique 2)
 Instead of asking direct answers, we tell the model to show work, then on a new line write only the number for math or write function body. This makes it reason through the problem.
 
-### 4. Self-Verification
+### 4. Self-Verification (`agent.py:107-135`)
 Two step process where model generates and answer then a second LLM call verifies it. 
 
 ## Other things I tried that didn't help or work
@@ -49,6 +51,7 @@ python evaluate.py --sample 100 --mix --llm-judge
 
 # Fill the project answers from test set 
 #Also has a test limit defaulted to None, but if we need to fill till specific questions we can set that limit
+#The test data and project answer file needs to be in this directory
 python generate_answers.py
 
 ```

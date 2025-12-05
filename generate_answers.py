@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 INPUT_PATH = Path("cse_476_final_project_test_data.json")
 OUTPUT_PATH = Path("cse_476_final_project_answers.json")
 
-TEST_LIMIT = 10
+TEST_LIMIT = None
 
 # Import the agent
 from agent import solve
@@ -42,7 +42,7 @@ def build_answers(questions: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         answers.append({"output": real_answer})
         
         # Progress 
-        if idx % 100 == 0:
+        if idx % 10 == 0:
             print(f"Processed {idx}/{len(questions)} questions")
     return answers
 
