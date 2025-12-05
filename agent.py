@@ -3,24 +3,16 @@ from typing import Dict, Any, List, Optional, Tuple
 import ast
 import operator as op
 import re
+import os
 
 #API Configuration
-API_KEY = "cse476"
-API_BASE = "http://10.4.58.53:41701/v1"
-MODEL = "bens_model"
+API_KEY = os.getenv("OPENAI_API_KEY", "cse476")
+API_BASE = os.getenv("API_BASE", "http://10.4.58.53:41701/v1")
+MODEL = os.getenv("MODEL_NAME", "bens_model")
 
-def call_llm(
-    prompt: str,
-    system: str = "You are a helpful assistant.",
-    temperature: float = 0.0,
-    max_tokens: int = 512,
-    timeout: int = 60
-) -> Dict[str, Any]:
-
-    """
-    Calls an OpenAI-style /v1/chat/completions endpoint and returns:
-    { 'ok': bool, 'text': str or None, 'raw': dict or None, 'status': int, 'error': str or None, 'headers': dict }
-    """
+#Calls llm api, inspired by the tutorial
+def call_llm(prompt: str, system: str = "You are a helpful assistant.",
+             temperature: float = 0.0, max_tokens: int = 1024, retries: int = 2) -> str:
 
     url = f"{API_BASE}/chat/completions"
     headers = {
@@ -36,24 +28,18 @@ def call_llm(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
-        status = resp.status_code
-        hdrs   = dict(resp.headers)
-        if status == 200:
-            data = resp.json()
-            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return {"ok": True, "text": text, "raw": data, "status": status, "error": None, "headers": hdrs}
-        else:
-            # try best-effort to surface error text
-            err_text = None
-            try:
-                err_text = resp.json()
-            except Exception:
-                err_text = resp.text
-            return {"ok": False, "text": None, "raw": None, "status": status, "error": str(err_text), "headers": hdrs}
-    except requests.RequestException as e:
-        return {"ok": False, "text": None, "raw": None, "status": -1, "error": str(e), "headers": {}}
+    for attempt in range(retries):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
+            if resp.status_code == 200:
+                text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                if text and text.strip():  # Make sure we got actual content
+                    return text
+        except Exception as e:
+            if attempt == retries - 1:  # Last attempt
+                return ""
+            continue
+    return ""
 
 #Tool: Safe Calculator
 
@@ -223,7 +209,7 @@ def parse_action(text: str) -> Tuple[str, str]:
 
 def tool_agent(question: str, max_tool_uses: int = 3) -> str:
     """
-    Technique 3: Tool-using agent loop (from Mini Lab 5).
+    Technique 3: Tool using agent loop
     Uses calculator tool for arithmetic.
     """
     # First prompt
@@ -261,5 +247,49 @@ Reply exactly as: FINAL: <answer>"""
     
     return payload
 
+#Technique 4: Self consistency / majority voting
+
+def self_consistency(question: str, domain: str, num_samples: int = 3) -> str:
+    """
+    Technique 4: Self consistency with majority voting.
+    Sample multiple answers with temperature > 0 for diverse samples as taught in class, take majority vote.
+    """
+    answers = []
+    
+    for _ in range(num_samples):
+        answer, _ = chain_of_thought(question, domain)
+        if answer:
+            # Normalize for comparison
+            normalized = normalize_answer(answer, domain)
+            answers.append(normalized)
+    
+    if not answers:
+        return ""
+    
+    # Majority vote
+    counter = Counter(answers)
+    best_answer, count = counter.most_common(1)[0]
+    
+    return best_answer
+
+
+def normalize_answer(answer: str, domain: str) -> str:
+    """Normalize answer for comparison in voting."""
+    answer = answer.strip().lower()
+    
+    if domain == "math":
+        # Extract number
+        num = re.search(r"[-+]?\d+(?:\.\d+)?", answer)
+        if num:
+            # Convert to normalized form
+            try:
+                val = float(num.group(0))
+                if val == int(val):
+                    return str(int(val))
+                return str(val)
+            except:
+                pass
+    
+    return answer
 
 
