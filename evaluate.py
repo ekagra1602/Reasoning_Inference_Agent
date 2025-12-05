@@ -84,3 +84,56 @@ Is the prediction correct? Reply with ONLY "correct" or "incorrect"."""
 
     # Only accept if response starts with "correct"
     return response.startswith("correct")   
+
+
+def is_correct(pred, gold, domain: str, use_llm_judge: bool = False, question: str = "") -> bool:
+    """Check if prediction matches expected answer."""
+    pred = str(pred or "").strip()
+    gold = str(gold or "").strip()
+
+    # Extract answers
+    gold_answer = extract_answer(gold, domain)
+    pred_answer = extract_answer(pred, domain)
+
+    # Normalize for comparison
+    pred_norm = normalize_answer(pred_answer)
+    gold_norm = normalize_answer(gold_answer)
+
+    # Exact match (case insensitive, normalized)
+    if pred_norm == gold_norm:
+        return True
+
+    # Numeric comparison for math and numbers
+    try:
+        pred_nums = re.findall(r'[-+]?\d+\.?\d*', pred_answer)
+        gold_nums = re.findall(r'[-+]?\d+\.?\d*', gold_answer)
+
+        if pred_nums and gold_nums:
+            pred_num = float(pred_nums[-1])
+            gold_num = float(gold_nums[-1])
+            if abs(pred_num - gold_num) < 0.01:
+                return True
+    except:
+        pass
+
+    # For code, check if the essential code is the same
+    if domain == "coding":
+        pred_code = re.sub(r'\s+', '', pred_answer)
+        gold_code = re.sub(r'\s+', '', gold_answer)
+        if pred_code == gold_code:
+            return True
+        if gold_code in pred_code and len(gold_code) > 10:
+            return True
+
+    # Substring containment
+    if len(gold_norm) > 5:
+        if gold_norm in pred_norm:
+            return True
+        if pred_norm in gold_norm and len(pred_norm) > 5:
+            return True
+
+    # If all string matching fails and LLM judge is enabled, use it as fallback
+    if use_llm_judge and question:
+        return llm_judge(question, pred, gold, domain)
+
+    return False
