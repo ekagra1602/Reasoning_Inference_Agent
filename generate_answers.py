@@ -7,8 +7,10 @@ from typing import Any, Dict, List
 INPUT_PATH = Path("cse_476_final_project_test_data.json")
 OUTPUT_PATH = Path("cse_476_final_project_answers.json")
 
+TEST_LIMIT = 10
+
 # Import the agent
-from agent import solve, classify_domain
+from agent import solve
 
 def load_questions(path: Path) -> List[Dict[str, Any]]:
     with path.open("r") as fp:
@@ -20,11 +22,28 @@ def load_questions(path: Path) -> List[Dict[str, Any]]:
 def build_answers(questions: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     answers = []
     for idx, question in enumerate(questions, start=1):
-        # Example: assume you have an agent loop that produces an answer string.
-        # real_answer = agent_loop(question["input"])
-        # answers.append({"output": real_answer})
-        placeholder_answer = f"Placeholder answer for question {idx}"
-        answers.append({"output": placeholder_answer})
+        # Get the question text
+        question_text = question.get("input", "")
+        #present in dev but not in test
+        domain_hint = question.get("domain")  
+        
+        # Run the agent to get the answer
+        try:
+            real_answer = solve(question_text, domain_hint)
+        except Exception as e:
+            print(f"[{idx}] Error: {e}")
+            real_answer = ""
+        
+        # String answer and check limits
+        real_answer = str(real_answer or "").strip()
+        if len(real_answer) >= 5000:
+            real_answer = real_answer[:4999]
+        
+        answers.append({"output": real_answer})
+        
+        # Progress 
+        if idx % 100 == 0:
+            print(f"Processed {idx}/{len(questions)} questions")
     return answers
 
 def validate_results(
@@ -49,6 +68,11 @@ def validate_results(
 
 def main() -> None:
     questions = load_questions(INPUT_PATH)
+
+    if TEST_LIMIT is not None:
+        questions = questions[:TEST_LIMIT]
+        print(f"Testing: Processing first {len(questions)} questions only")
+
     print(f"Loaded {len(questions)} questions from {INPUT_PATH}")
     
     answers = build_answers(questions)

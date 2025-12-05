@@ -81,22 +81,22 @@ def chain_of_thought_prompt(question: str, domain: str) -> tuple[str, str]:
         if len(parts) > 1:
             question = "Predict:" + parts[1]
 
-    # Domain-specific system prompts
+    # Domain-specific system prompts 
     systems = {
-        "math": "You are a math expert. Show your work step by step. Put final answer after ####",
-        "coding": "You are a Python expert. Write clean code. Return only function body with 4-space indent.",
-        "planning": "You are a planning expert. Generate PDDL actions: (action-name arg1 arg2)",
-        "future_prediction": "You are a forecasting expert. Answer in list format: ['item1', 'item2'] or [number].",
-        "common_sense": "You are a knowledgeable assistant. Give clear, direct answers."
+        "math": "You are a math expert. Show your reasoning, think step by step for everything, then on a NEW LINE write ONLY the final number. No words on that last line, just the number.",
+        "coding": "You are a Python expert. Write the function body with 4-space indent. Put ONLY the code, no explanations.",
+        "planning": "You are a planning expert. Think through the problem, then on NEW LINES put ONLY the action sequence in format: (action arg1 arg2)",
+        "future_prediction": "You are a forecasting expert. Think it through, then on a NEW LINE put ONLY the prediction in format ['item'] or [number]. No extra words on that line.",
+        "common_sense": "You are a knowledgeable assistant. Think through it, then on a NEW LINE put ONLY the direct answer. No 'Answer:' - just the answer itself on the last line."
     }
 
     # Domain-specific CoT prompts
     prompts = {
-        "math": f"{question}\n\nLet's solve step by step:\n",
-        "coding": f"{question}\n\nFunction body:\n",
-        "planning": f"{question}\n\nAction sequence:\n",
-        "future_prediction": f"{question}\n\nPrediction:\n",
-        "common_sense": f"{question}\n\nAnswer:\n"
+        "math": f"{question}\n\nShow your work, then on a NEW LINE write only the number:\n",
+        "coding": f"{question}\n\nWrite the function body (4-space indent, no 'def' line):\n",
+        "planning": f"{question}\n\nThink through the plan, then on NEW LINES list only the actions:\n",
+        "future_prediction": f"{question}\n\nThink it through, then on a NEW LINE give only the prediction:\n",
+        "common_sense": f"{question}\n\nThink about it, then on a NEW LINE give ONLY the answer:\n"
     }
 
     return systems.get(domain, systems["common_sense"]), prompts.get(domain, prompts["common_sense"])
