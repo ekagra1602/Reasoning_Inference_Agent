@@ -155,3 +155,85 @@ def get_mixed_sample(data, n):
 
     random.shuffle(sample)
     return sample[:n]
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, default=str(DEV_DATA_PATH))
+    parser.add_argument("--sample", type=int, default=None)
+    parser.add_argument("--domain", type=str, default=None)
+    parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--mix", action="store_true")
+    parser.add_argument("--show-full", action="store_true")
+    parser.add_argument("--llm-judge", action="store_true")
+    args = parser.parse_args()
+
+    data = load_data(Path(args.data))
+    print(f"Loaded {len(data)} questions")
+
+    if args.domain:
+        data = [d for d in data if d.get("domain") == args.domain]
+        print(f"Filtered to {len(data)} {args.domain} questions")
+
+    if args.sample:
+        if args.mix and not args.domain:
+            data = get_mixed_sample(data, args.sample)
+            print(f"Mixed sample: {len(data)} questions")
+        else:
+            data = data[:args.sample]
+            print(f"Using first {len(data)} questions")
+
+    stats = defaultdict(lambda: {"correct": 0, "total": 0})
+
+
+    for i, item in enumerate(data):
+        question = item["input"]
+        expected = item["output"]
+        domain = item.get("domain", "common_sense")
+
+        try:
+            # Just solve the question directly if no domain
+            prediction = solve(question)
+        except Exception as e:
+            prediction = ""
+            if args.verbose:
+                print(f"[{i}] Error: {e}")
+
+        correct = is_correct(prediction, expected, domain, use_llm_judge=args.llm_judge, question=question)
+        stats[domain]["total"] += 1
+        if correct:
+            stats[domain]["correct"] += 1
+
+        if args.verbose:
+            mark = "✅" if correct else "❌"
+            if args.show_full:
+                print(f"\n[{i}] {mark} {domain}")
+                print(f"Question: {question[:150]}...")
+                print(f"Predicted: {prediction}")
+                print(f"Expected:  {expected}")
+                print("-" * 60)
+            else:
+                pred_short = str(prediction or "")[:40].replace("\n", "\\n")
+                gold_show = extract_answer(expected, domain)[:40].replace("\n", "\\n")
+                print(f"[{i}] {mark} {domain}: '{pred_short}' vs '{gold_show}'")
+
+    print("\n" + "=" * 50)
+    print("RESULTS")
+    print("=" * 50)
+
+    total_correct = 0
+    total_questions = 0
+
+    for domain in sorted(stats.keys()):
+        s = stats[domain]
+        acc = s["correct"] / s["total"] if s["total"] > 0 else 0
+        print(f"{domain:20} {acc:6.1%}  ({s['correct']}/{s['total']})")
+        total_correct += s["correct"]
+        total_questions += s["total"]
+
+    print("-" * 50)
+    overall = total_correct / total_questions if total_questions > 0 else 0
+    print(f"{'OVERALL':20} {overall:6.1%}  ({total_correct}/{total_questions})")
+
+if __name__ == "__main__":
+    main()
+
