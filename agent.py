@@ -1,6 +1,5 @@
 import requests
 from typing import Dict, Any, List, Optional, Tuple
-import ast
 import operator as op
 import re
 import os
@@ -44,11 +43,6 @@ def call_llm(prompt: str, system: str = "You are a helpful assistant.",
 #Technique 1: Domain Router 
 
 def classify_domain(question: str) -> str:
-
-    """
-    Classifies questions into different domains using keyword rule
-    Not ising llm calls here.
-    """
     q = question.lower()
 
     # Planning domain having action/state language
