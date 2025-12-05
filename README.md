@@ -1,6 +1,6 @@
 # Project Report - Ekagra Gupta
 
-##Github Repo Link - https://github.com/ekagra1602/Reasoning_Inference_Agent
+## Github Repo Link - https://github.com/ekagra1602/Reasoning_Inference_Agent
 
 ## Details 
 I built a reasoning agent that solves problems across 5 domains (math, coding, planning, common sense, future prediction) using 4 inference-time techniques. The agent achieved ~45% accuracy on the dev set with LLM-based evaluation, using only 1 API call per question
