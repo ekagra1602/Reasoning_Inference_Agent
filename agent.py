@@ -41,41 +41,6 @@ def call_llm(prompt: str, system: str = "You are a helpful assistant.",
             continue
     return ""
 
-#Tool: Safe Calculator
-
-ALLOWED_BINOPS = {
-    ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,
-    ast.Div: op.truediv, ast.Pow: op.pow, ast.Mod: op.mod
-}
-ALLOWED_UNOPS = {ast.UAdd: op.pos, ast.USub: op.neg}
-
-def safe_eval(expr: str):
-    """
-    Safe arithmetic evaluator
-    Supports: numbers, + - * / ** % parentheses, round(x, ndigits)
-    """
-    expr = expr.replace("^", "**")
-    if len(expr) > 300:
-        raise ValueError("Expression too long.")
-    
-    node = ast.parse(expr, mode="eval")
-    
-    def ev(n):
-        if isinstance(n, ast.Expression):
-            return ev(n.body)
-        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
-            return n.value
-        if isinstance(n, ast.UnaryOp) and type(n.op) in ALLOWED_UNOPS:
-            return ALLOWED_UNOPS[type(n.op)](ev(n.operand))
-        if isinstance(n, ast.BinOp) and type(n.op) in ALLOWED_BINOPS:
-            return ALLOWED_BINOPS[type(n.op)](ev(n.left), ev(n.right))
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "round":
-            args = [ev(a) for a in n.args]
-            return round(*args)
-        raise ValueError(f"Disallowed: {ast.dump(n)}")
-    
-    return ev(node)
-
 #Technique 1: Domain Router 
 
 def classify_domain(question: str) -> str:
@@ -105,85 +70,42 @@ def classify_domain(question: str) -> str:
                             "compute", "solve", "equation", "integer", 
                             "probability", "triangle", "how many"]):
         return "math"
+    if re.search(r'\d+\s*[+\-*/]\s*\d+', question):
+        return "math"
     
     # Default to common sense
     return "common_sense"
 
-#Technique 2: Chain of thought prompting
+# TECHNIQUE 2: Chain-of-Thought Prompting
 
-COT_SYSTEM = """You are a careful reasoning assistant. 
-Think through problems step by step before giving your final answer.
-After your reasoning, provide your answer on a new line starting with "FINAL ANSWER:"
-"""
+def chain_of_thought_prompt(question: str, domain: str) -> tuple[str, str]:
+    """Generate Chain-of-Thought prompt adapted to domain."""
 
-COT_PROMPT = """Question: {question}
+    # Clean up future prediction questions
+    if domain == "future_prediction" and "You are an agent" in question:
+        parts = question.split("The event to be predicted:", 1)
+        if len(parts) > 1:
+            question = "Predict:" + parts[1]
 
-Let's think step by step, then provide the final answer.
-End your response with:
-FINAL ANSWER: <your answer>"""
+    # Domain-specific system prompts
+    systems = {
+        "math": "You are a math expert. Show your work step by step. Put final answer after ####",
+        "coding": "You are a Python expert. Write clean code. Return only function body with 4-space indent.",
+        "planning": "You are a planning expert. Generate PDDL actions: (action-name arg1 arg2)",
+        "future_prediction": "You are a forecasting expert. Answer in list format: ['item1', 'item2'] or [number]. Ignore \\boxed{} instructions.",
+        "common_sense": "You are a knowledgeable assistant. Give clear, direct answers."
+    }
 
+    # Domain-specific CoT prompts
+    prompts = {
+        "math": f"{question}\n\nLet's solve step by step:\n",
+        "coding": f"{question}\n\nFunction body:\n",
+        "planning": f"{question}\n\nAction sequence:\n",
+        "future_prediction": f"{question}\n\nPrediction:\n",
+        "common_sense": f"{question}\n\nAnswer:\n"
+    }
 
-def chain_of_thought(question: str, domain: str = "default") -> Tuple[str, str]:
-    """
-    Technique 2: Chain of Thought prompting.
-    Returns (answer, reasoning) tuple.
-    """
-    prompt = COT_PROMPT.format(question=question)
-    
-    result = call_llm(prompt=prompt, system=COT_SYSTEM, temperature=0.0)
-    
-    if not result["ok"]:
-        return "", ""
-    
-    response = result["text"] or ""
-    answer = extract_final_answer(response, domain)
-    
-    return answer, response
-
-#Helper function to extract the final answer from a CoT response.
-def extract_final_answer(response: str, domain: str) -> str:
-    #Find explicit FINAL ANSWER marker
-    patterns = [
-        r"FINAL ANSWER:\s*(.+?)(?:\n|$)",
-        r"Final Answer:\s*(.+?)(?:\n|$)",
-        r"The answer is[:\s]+(.+?)(?:\n|$)",
-        r"Answer:\s*(.+?)(?:\n|$)",
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
-        if match:
-            answer = match.group(1).strip()
-            return clean_answer(answer, domain)
-    
-    # Fallback: extract based on domain
-    if domain == "math":
-        boxed = re.search(r"\\boxed\{([^}]+)\}", response)
-        if boxed:
-            return boxed.group(1).strip()
-        nums = re.findall(r"[-+]?\d+(?:\.\d+)?", response)
-        if nums:
-            return nums[-1]
-    
-    # Return last non-empty line
-    lines = [l.strip() for l in response.split("\n") if l.strip()]
-    return lines[-1] if lines else ""
-
-
-def clean_answer(answer: str, domain: str) -> str:
-    """Clean up extracted answer."""
-    answer = answer.strip().rstrip(".")
-    
-    # For math, extract just the number
-    if domain == "math":
-        boxed = re.search(r"\\boxed\{([^}]+)\}", answer)
-        if boxed:
-            return boxed.group(1).strip()
-        num = re.search(r"[-+]?\d+(?:\.\d+)?", answer)
-        if num:
-            return num.group(0)
-    
-    return answer
+    return systems.get(domain, systems["common_sense"]), prompts.get(domain, prompts["common_sense"])
 
 #Technique 3: Tool-using agent loop 
 
