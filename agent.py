@@ -92,7 +92,7 @@ def chain_of_thought_prompt(question: str, domain: str) -> tuple[str, str]:
         "math": "You are a math expert. Show your work step by step. Put final answer after ####",
         "coding": "You are a Python expert. Write clean code. Return only function body with 4-space indent.",
         "planning": "You are a planning expert. Generate PDDL actions: (action-name arg1 arg2)",
-        "future_prediction": "You are a forecasting expert. Answer in list format: ['item1', 'item2'] or [number]. Ignore \\boxed{} instructions.",
+        "future_prediction": "You are a forecasting expert. Answer in list format: ['item1', 'item2'] or [number].",
         "common_sense": "You are a knowledgeable assistant. Give clear, direct answers."
     }
 
@@ -140,49 +140,58 @@ Is this answer correct and complete? Reply with:
     # Step 3: If incorrect, try to refine 
     return initial_answer
 
-#Technique 4: Self consistency / majority voting
+#Technique 4: Format and extract answer properly
 
-def self_consistency(question: str, domain: str, num_samples: int = 3) -> str:
-    """
-    Technique 4: Self consistency with majority voting.
-    Sample multiple answers with temperature > 0 for diverse samples as taught in class, take majority vote.
-    """
-    answers = []
-    
-    for _ in range(num_samples):
-        answer, _ = chain_of_thought(question, domain)
-        if answer:
-            # Normalize for comparison
-            normalized = normalize_answer(answer, domain)
-            answers.append(normalized)
-    
-    if not answers:
+def extract_answer(response: str, domain: str) -> str:
+    if not response or not response.strip():
         return ""
-    
-    # Majority vote
-    counter = Counter(answers)
-    best_answer, count = counter.most_common(1)[0]
-    
-    return best_answer
+
+    response = response.strip()
+
+    # Remove markdown formatting
+    response = re.sub(r'\*\*([^*]+)\*\*', r'\1', response)
+    response = re.sub(r'\$\$([^$]+)\$\$', r'\1', response)
+    response = re.sub(r'\$([^$]+)\$', r'\1', response)
+
+    # Take last non-empty line
+    lines = [l.strip() for l in response.split('\n') if l.strip()]
+    if lines:
+        return lines[-1].rstrip('.,;:')
+
+    return response
 
 
-def normalize_answer(answer: str, domain: str) -> str:
-    """Normalize answer for comparison in voting."""
-    answer = answer.strip().lower()
-    
-    if domain == "math":
-        # Extract number
-        num = re.search(r"[-+]?\d+(?:\.\d+)?", answer)
-        if num:
-            # Convert to normalized form
-            try:
-                val = float(num.group(0))
-                if val == int(val):
-                    return str(int(val))
-                return str(val)
-            except:
-                pass
-    
-    return answer
+# MAIN SOLVER
+
+def solve(question: str, domain: Optional[str] = None, use_self_consistency: bool = False) -> str:
+    # Truncate very long inputs
+    if len(question) > 20000:
+        question = question[:20000] + "..."
+
+    # Technique 1: Domain Classification
+    if domain is None:
+        domain = classify_domain(question)
+
+    # Technique 3: Self-Verification
+    if use_self_consistency: 
+        return self_verification(question, domain)
+
+    # Techniques 2 & 3: Domain-Adaptive Prompting + Chain-of-Thought
+    system, prompt = chain_of_thought_prompt(question, domain)
+    response = call_llm(prompt, system, temperature=0.0,
+     max_tokens=1024)
+
+    if not response:
+        return ""
+
+    return extract_answer(response, domain)
 
 
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1:
+        q = " ".join(sys.argv[1:])
+        print(f"Domain: {classify_domain(q)}")
+        print(f"Answer: {solve(q)}")
+    else:
+        print(f"Answer: {solve('What is 33 + 33?')}")
