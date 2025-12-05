@@ -137,3 +137,21 @@ def is_correct(pred, gold, domain: str, use_llm_judge: bool = False, question: s
         return llm_judge(question, pred, gold, domain)
 
     return False
+
+def get_mixed_sample(data, n):
+    """Get balanced sample across domains."""
+    by_domain = defaultdict(list)
+    for item in data:
+        by_domain[item.get("domain", "common_sense")].append(item)
+
+    domains = list(by_domain.keys())
+    per_domain = max(1, n // len(domains))
+
+    random.seed(42)
+    sample = []
+    for domain in domains:
+        items = by_domain[domain]
+        sample.extend(random.sample(items, min(per_domain, len(items))))
+
+    random.shuffle(sample)
+    return sample[:n]
